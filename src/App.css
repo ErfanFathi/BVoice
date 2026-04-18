@@ -1,0 +1,8 @@
+/* Global resets only — everything else is scoped in App.svelte */
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light dark;
+}
