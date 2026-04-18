@@ -23,6 +23,7 @@ jobs:
             libsoup-3.0-dev \
             libayatana-appindicator3-dev \
             libasound2-dev \
+            libxdo-dev \
             libclang-dev \
             libssl-dev \
             pkg-config \
