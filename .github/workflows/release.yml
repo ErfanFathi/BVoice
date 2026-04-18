@@ -57,13 +57,12 @@ jobs:
           releaseBody: |
             Linux builds of BVoice ${{ github.ref_name }}.
 
-            | Format   | For                             |
-            |----------|---------------------------------|
-            | `.deb`   | Debian / Ubuntu                 |
-            | `.rpm`   | Fedora / RHEL / openSUSE        |
-            | `.AppImage` | any modern Linux distro (portable) |
+            | Format | For                      |
+            |--------|--------------------------|
+            | `.deb` | Debian / Ubuntu          |
+            | `.rpm` | Fedora / RHEL / openSUSE |
 
             The whisper model (~75–466 MB depending on your choice) downloads on first run.
           releaseDraft: true
           prerelease: false
-          args: '--bundles deb,appimage,rpm'
+          args: '--bundles deb,rpm'
