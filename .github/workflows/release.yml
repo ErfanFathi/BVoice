@@ -26,6 +26,7 @@ jobs:
             libxdo-dev \
             libclang-dev \
             libssl-dev \
+            libstdc++-12-dev \
             pkg-config \
             build-essential
 
