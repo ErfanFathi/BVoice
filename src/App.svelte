@@ -14,14 +14,40 @@
     input_device: string | null;
     hotkey: string;
     beam_size: number;
+    use_vad: boolean;
+    vad_threshold: number;
   };
 
   type Progress = { model: string; downloaded: number; total: number; pct: number };
 
-  const MODELS = [
-    { value: "tiny.en", label: "tiny.en", size: "~75 MB" },
-    { value: "base.en", label: "base.en", size: "~142 MB" },
-    { value: "small.en", label: "small.en", size: "~466 MB" },
+  type ModelOption = { value: string; label: string; size: string };
+  type ModelGroup = { family: string; options: ModelOption[] };
+
+  const MODEL_GROUPS: ModelGroup[] = [
+    {
+      family: "tiny.en",
+      options: [
+        { value: "tiny.en", label: "Full precision", size: "~75 MB" },
+        { value: "tiny.en-q5_1", label: "Q5_1 quantized", size: "~31 MB" },
+        { value: "tiny.en-q8_0", label: "Q8_0 quantized", size: "~42 MB" },
+      ],
+    },
+    {
+      family: "base.en",
+      options: [
+        { value: "base.en", label: "Full precision", size: "~142 MB" },
+        { value: "base.en-q5_1", label: "Q5_1 quantized", size: "~57 MB" },
+        { value: "base.en-q8_0", label: "Q8_0 quantized", size: "~81 MB" },
+      ],
+    },
+    {
+      family: "small.en",
+      options: [
+        { value: "small.en", label: "Full precision", size: "~466 MB" },
+        { value: "small.en-q5_1", label: "Q5_1 quantized", size: "~181 MB" },
+        { value: "small.en-q8_0", label: "Q8_0 quantized", size: "~253 MB" },
+      ],
+    },
   ];
 
   let cfg = $state<Config | null>(null);
@@ -135,23 +161,21 @@
       <div class="card-head">
         <h2>Transcription model</h2>
       </div>
-      <div class="model-grid">
-        {#each MODELS as m}
-          <label class="model-option" class:active={cfg.model === m.value}>
-            <input
-              type="radio"
-              name="model"
-              value={m.value}
-              checked={cfg.model === m.value}
-              onchange={() => (cfg!.model = m.value)}
-              disabled={loading || capturing}
-            />
-            <div class="model-info">
-              <strong>{m.label}</strong>
-              <span class="muted small">{m.size}</span>
-            </div>
-          </label>
-        {/each}
+      <div class="field">
+        <span class="label">Model</span>
+        <select
+          class="grow"
+          bind:value={cfg.model}
+          disabled={loading || capturing}
+        >
+          {#each MODEL_GROUPS as g}
+            <optgroup label={g.family}>
+              {#each g.options as o}
+                <option value={o.value}>{o.label} — {o.size}</option>
+              {/each}
+            </optgroup>
+          {/each}
+        </select>
       </div>
       {#if loading && progress}
         <div class="progress">
@@ -178,6 +202,36 @@
             disabled={loading || capturing}
           />
           <span class="muted small">{cfg.beam_size <= 1 ? "greedy" : "beam search"}</span>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">Trim silence</span>
+        <div class="grow row-right">
+          <button
+            class="toggle"
+            role="switch"
+            aria-checked={cfg.use_vad}
+            aria-label="Trim silence with VAD"
+            onclick={() => (cfg!.use_vad = !cfg!.use_vad)}
+            disabled={loading || capturing}
+          >
+            <span class="thumb" class:on={cfg.use_vad}></span>
+          </button>
+          <span class="muted small">Silero VAD</span>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">VAD threshold</span>
+        <div class="grow row-right">
+          <input
+            type="number"
+            min="0.1"
+            max="0.9"
+            step="0.05"
+            bind:value={cfg.vad_threshold}
+            disabled={loading || capturing || !cfg.use_vad}
+          />
+          <span class="muted small">speech probability</span>
         </div>
       </div>
     </section>

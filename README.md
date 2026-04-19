@@ -26,12 +26,12 @@ Grab the latest build from the [**Releases page**](https://github.com/ErfanFathi
 
 **Debian / Ubuntu** — `.deb`:
 ```
-sudo apt install ./BVoice_0.1.0_amd64.deb
+sudo apt install ./BVoice_0.1.1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE** — `.rpm`:
 ```
-sudo dnf install ./BVoice-0.1.0-1.x86_64.rpm
+sudo dnf install ./BVoice-0.1.1-1.x86_64.rpm
 ```
 
 After install you'll find BVoice in your application menu. On first launch the selected whisper model (~75–466 MB) downloads to `~/.local/share/bvoice/models/`.
@@ -39,10 +39,10 @@ After install you'll find BVoice in your application menu. On first launch the s
 ## Features
 
 - Push-to-talk trigger (default: Right-Alt), rebindable from the settings window
-- Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`)
-- Silero VAD trims silence before transcription
+- Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`, full or quantized `q5_1` / `q8_0`)
+- Optional Silero VAD silence trim with tunable threshold
 - FFT-based resampling (rubato) for high-quality 48 kHz → 16 kHz conversion
-- Beam search (configurable size, default 5) or greedy decoding
+- Beam search (configurable size, default 2) or greedy decoding
 - Live-applied settings for threshold, input device, and model swap — no restart
 - Tray icon reflects state (idle / recording / transcribing) using the branded icon
 - Single-instance enforcement; optional autostart on login
@@ -66,13 +66,15 @@ After install you'll find BVoice in your application menu. On first launch the s
 
 Settings persist at `~/.config/bvoice/config.toml`:
 
-| Key                | Type          | Default   | Description                                       |
-|--------------------|---------------|-----------|---------------------------------------------------|
-| `model`            | string        | `base.en` | Whisper model (`tiny.en`, `base.en`, `small.en`)  |
-| `arm_threshold_ms` | u64           | `1000`    | Hold duration before recording arms               |
-| `input_device`     | string\|null  | `null`    | Input device name; null = system default          |
-| `hotkey`           | string        | `AltGr`   | Trigger key (rebindable from the settings window) |
-| `beam_size`        | u32           | `5`       | Beam search size; `1` = greedy                    |
+| Key                | Type          | Default   | Description                                                |
+|--------------------|---------------|-----------|------------------------------------------------------------|
+| `model`            | string        | `base.en` | Whisper model; append `-q5_1` or `-q8_0` for quantized     |
+| `arm_threshold_ms` | u64           | `1000`    | Hold duration before recording arms                        |
+| `input_device`     | string\|null  | `null`    | Input device name; null = system default                   |
+| `hotkey`           | string        | `AltGr`   | Trigger key (rebindable from the settings window)          |
+| `beam_size`        | u32           | `2`       | Beam search size; `1` = greedy                             |
+| `use_vad`          | bool          | `false`   | Trim silence with Silero VAD before transcription          |
+| `vad_threshold`    | f32           | `0.5`     | VAD speech probability threshold (0–1); active when on     |
 
 All fields are editable from the Settings window and persist on Save.
 

@@ -149,16 +149,23 @@ pub fn run() {
                         return;
                     }
                     tray::set_state(tray::State::Transcribing);
-                    let beam_size = config::load().beam_size;
+                    let cfg = config::load();
+                    let beam_size = cfg.beam_size;
+                    let use_vad = cfg.use_vad;
+                    let vad_threshold = cfg.vad_threshold;
                     thread::spawn(move || {
-                        let trimmed = vad::trim_silence(samples);
-                        if trimmed.is_empty() {
+                        let prepared = if use_vad {
+                            vad::trim_silence_with(samples, vad_threshold, vad::DEFAULT_PAD_CHUNKS)
+                        } else {
+                            samples
+                        };
+                        if prepared.is_empty() {
                             println!("[bvoice] no speech detected");
                             tray::set_state(tray::State::Idle);
                             return;
                         }
                         let t0 = std::time::Instant::now();
-                        match transcribe::transcribe(&trimmed, beam_size) {
+                        match transcribe::transcribe(&prepared, beam_size) {
                             Ok(text) => {
                                 println!(
                                     "[bvoice] transcribed ({}ms): {:?}",

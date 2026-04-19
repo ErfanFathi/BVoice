@@ -11,6 +11,10 @@ pub struct Config {
     pub hotkey: String,
     #[serde(default = "default_beam_size")]
     pub beam_size: u32,
+    #[serde(default = "default_use_vad")]
+    pub use_vad: bool,
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: f32,
 }
 
 fn default_hotkey() -> String {
@@ -18,7 +22,15 @@ fn default_hotkey() -> String {
 }
 
 fn default_beam_size() -> u32 {
-    5
+    2
+}
+
+fn default_use_vad() -> bool {
+    false
+}
+
+fn default_vad_threshold() -> f32 {
+    0.5
 }
 
 impl Default for Config {
@@ -29,6 +41,8 @@ impl Default for Config {
             input_device: None,
             hotkey: default_hotkey(),
             beam_size: default_beam_size(),
+            use_vad: default_use_vad(),
+            vad_threshold: default_vad_threshold(),
         }
     }
 }
