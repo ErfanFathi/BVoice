@@ -6,6 +6,13 @@ use std::time::Duration;
 static ARM_MS: AtomicU64 = AtomicU64::new(1000);
 static TRIGGER: Mutex<rdev::Key> = Mutex::new(rdev::Key::AltGr);
 static CAPTURING: AtomicBool = AtomicBool::new(false);
+static STATE: Mutex<State> = Mutex::new(State::Idle);
+static SEQ: AtomicU64 = AtomicU64::new(0);
+
+pub fn reset() {
+    *STATE.lock().unwrap() = State::Idle;
+    SEQ.fetch_add(1, Ordering::Relaxed);
+}
 
 pub fn set_arm_threshold_ms(ms: u64) {
     ARM_MS.store(ms, Ordering::Relaxed);
@@ -75,9 +82,7 @@ where
     F: Fn(HotkeyEvent) + Send + Sync + 'static,
 {
     thread::spawn(move || {
-        let state = Arc::new(Mutex::new(State::Idle));
         let on_event = Arc::new(on_event);
-        let mut seq: u64 = 0;
 
         let callback = move |event: rdev::Event| match event.event_type {
             rdev::EventType::KeyPress(k) => {
@@ -89,17 +94,15 @@ where
                 if k != trigger {
                     return;
                 }
-                let mut s = state.lock().unwrap();
+                let mut s = STATE.lock().unwrap();
                 if matches!(*s, State::Idle) {
-                    seq = seq.wrapping_add(1);
-                    let my_seq = seq;
+                    let my_seq = SEQ.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
                     *s = State::Pending(my_seq);
-                    let state_for_timer = Arc::clone(&state);
                     let ev_for_timer = Arc::clone(&on_event);
                     let threshold = Duration::from_millis(ARM_MS.load(Ordering::Relaxed));
                     thread::spawn(move || {
                         thread::sleep(threshold);
-                        let mut s = state_for_timer.lock().unwrap();
+                        let mut s = STATE.lock().unwrap();
                         if let State::Pending(id) = *s {
                             if id == my_seq {
                                 *s = State::Armed;
@@ -115,7 +118,7 @@ where
                 if k != trigger {
                     return;
                 }
-                let mut s = state.lock().unwrap();
+                let mut s = STATE.lock().unwrap();
                 let out = match *s {
                     State::Pending(_) => Some(HotkeyEvent::Cancelled),
                     State::Armed => Some(HotkeyEvent::Released),

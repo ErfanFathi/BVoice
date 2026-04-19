@@ -124,6 +124,10 @@ pub fn run() {
             let app_handle = app.handle().clone();
             hotkey::start_listener(move |event| match event {
                 HotkeyEvent::Armed => {
+                    if !transcribe::is_ready() {
+                        eprintln!("[bvoice] model still loading — ignoring hold");
+                        return;
+                    }
                     if let Err(e) = audio::start() {
                         eprintln!("[bvoice] audio start failed: {:?}", e);
                     } else {
@@ -191,6 +195,28 @@ pub fn run() {
                 "[bvoice] listener up — hold {} >{}ms to record",
                 cfg.hotkey, threshold_ms
             );
+
+            thread::spawn(|| loop {
+                thread::sleep(std::time::Duration::from_secs(2));
+                let Some((state, age)) = tray::state_with_age() else {
+                    continue;
+                };
+                let stuck = match state {
+                    tray::State::Recording => age > std::time::Duration::from_secs(60),
+                    tray::State::Transcribing => age > std::time::Duration::from_secs(45),
+                    tray::State::Idle => false,
+                };
+                if stuck {
+                    eprintln!(
+                        "[bvoice] watchdog: {:?} stuck {:.1}s, forcing reset",
+                        state,
+                        age.as_secs_f32()
+                    );
+                    let _ = audio::stop();
+                    hotkey::reset();
+                    tray::set_state(tray::State::Idle);
+                }
+            });
 
             Ok(())
         })
