@@ -38,7 +38,7 @@ After install you'll find BVoice in your application menu. On first launch the s
 
 ## Features
 
-- Push-to-talk trigger (default: Right-Alt), rebindable from the settings window
+- Push-to-talk trigger: hold **Ctrl + Win** (instant arm — no hold delay)
 - Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`, full or quantized `q5_1` / `q8_0`)
 - Optional Silero VAD silence trim with tunable threshold
 - FFT-based resampling (rubato) for high-quality 48 kHz → 16 kHz conversion
@@ -51,9 +51,9 @@ After install you'll find BVoice in your application menu. On first launch the s
 ## Usage
 
 1. Launch BVoice — a tray icon appears (no window by default).
-2. Click the tray icon → Settings to configure model, hotkey, input device, beam size, and autostart.
+2. Click the tray icon → Settings to configure model, input device, beam size, VAD, and autostart.
 3. Focus any text field (editor, terminal, browser, …).
-4. **Hold the trigger key for ≥ the arm threshold (default 1 s), speak, release.**
+4. **Hold Ctrl + Win, speak, release.**
 5. The transcription is typed at the cursor.
 
 ## Platform support
@@ -69,12 +69,12 @@ Settings persist at `~/.config/bvoice/config.toml`:
 | Key                | Type          | Default   | Description                                                |
 |--------------------|---------------|-----------|------------------------------------------------------------|
 | `model`            | string        | `base.en` | Whisper model; append `-q5_1` or `-q8_0` for quantized     |
-| `arm_threshold_ms` | u64           | `1000`    | Hold duration before recording arms                        |
 | `input_device`     | string\|null  | `null`    | Input device name; null = system default                   |
-| `hotkey`           | string        | `AltGr`   | Trigger key (rebindable from the settings window)          |
 | `beam_size`        | u32           | `2`       | Beam search size; `1` = greedy                             |
 | `use_vad`          | bool          | `false`   | Trim silence with Silero VAD before transcription          |
 | `vad_threshold`    | f32           | `0.5`     | VAD speech probability threshold (0–1); active when on     |
+
+The trigger is hardcoded to **Ctrl + Win** and is not user-configurable.
 
 All fields are editable from the Settings window and persist on Save.
 
@@ -104,7 +104,7 @@ npm run tauri build        # release bundles (.deb + .rpm)
 ## Architecture
 
 ```
-hotkey (rdev, X11 XRecord)  ─▶ state machine (arm-on-1s)
+hotkey (rdev, X11 XRecord)  ─▶ state machine (Ctrl+Win chord)
                                    │
                              armed ▼
                              audio::start   (cpal, dedicated thread)

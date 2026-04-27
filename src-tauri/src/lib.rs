@@ -30,11 +30,7 @@ fn get_config() -> config::Config {
 fn set_config(app: tauri::AppHandle, new: config::Config) -> Result<(), String> {
     let old = config::load();
     let model_changed = old.model != new.model;
-    hotkey::set_arm_threshold_ms(new.arm_threshold_ms);
     audio::set_device(new.input_device.clone());
-    if let Some(k) = hotkey::key_from_str(&new.hotkey) {
-        hotkey::set_trigger(k);
-    }
     config::save(&new).map_err(|e| e.to_string())?;
     if model_changed {
         let new_model = new.model.clone();
@@ -79,19 +75,9 @@ fn list_input_devices() -> Vec<String> {
     audio::list_devices()
 }
 
-#[tauri::command]
-fn capture_hotkey() {
-    hotkey::start_capture();
-}
-
 pub fn run() {
     let cfg = config::load();
-    let threshold_ms = cfg.arm_threshold_ms;
-    hotkey::set_arm_threshold_ms(threshold_ms);
     audio::set_device(cfg.input_device.clone());
-    if let Some(k) = hotkey::key_from_str(&cfg.hotkey) {
-        hotkey::set_trigger(k);
-    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -107,8 +93,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             set_config,
-            list_input_devices,
-            capture_hotkey
+            list_input_devices
         ])
         .setup(move |app| {
             tray::init(app)?;
@@ -121,7 +106,6 @@ pub fn run() {
                 }
             });
 
-            let app_handle = app.handle().clone();
             hotkey::start_listener(move |event| match event {
                 HotkeyEvent::Armed => {
                     if !transcribe::is_ready() {
@@ -185,16 +169,8 @@ pub fn run() {
                         tray::set_state(tray::State::Idle);
                     });
                 }
-                HotkeyEvent::Cancelled => println!("[bvoice] cancelled"),
-                HotkeyEvent::Captured(key) => {
-                    println!("[bvoice] hotkey captured: {}", key);
-                    let _ = app_handle.emit("bvoice:hotkey-captured", key);
-                }
             });
-            println!(
-                "[bvoice] listener up — hold {} >{}ms to record",
-                cfg.hotkey, threshold_ms
-            );
+            println!("[bvoice] listener up — hold Ctrl+Win to record");
 
             thread::spawn(|| loop {
                 thread::sleep(std::time::Duration::from_secs(2));

@@ -10,9 +10,7 @@
 
   type Config = {
     model: string;
-    arm_threshold_ms: number;
     input_device: string | null;
-    hotkey: string;
     beam_size: number;
     use_vad: boolean;
     vad_threshold: number;
@@ -57,7 +55,6 @@
   let statusKind = $state<"idle" | "saved" | "error">("idle");
   let progress = $state<Progress | null>(null);
   let loading = $state(false);
-  let capturing = $state(false);
   let autostart = $state(false);
 
   onMount(async () => {
@@ -79,10 +76,6 @@
       loading = false;
       progress = null;
       setStatus(`Error: ${e.payload}`, "error");
-    });
-    await listen<string>("bvoice:hotkey-captured", (e) => {
-      if (cfg) cfg.hotkey = e.payload;
-      capturing = false;
     });
   });
 
@@ -113,17 +106,6 @@
     } catch (e) {
       loading = false;
       progress = null;
-      setStatus(`Error: ${e}`, "error");
-    }
-  }
-
-  async function rebindHotkey() {
-    capturing = true;
-    setStatus("Press any key to bind…", "idle");
-    try {
-      await invoke("capture_hotkey");
-    } catch (e) {
-      capturing = false;
       setStatus(`Error: ${e}`, "error");
     }
   }
@@ -166,7 +148,7 @@
         <select
           class="grow"
           bind:value={cfg.model}
-          disabled={loading || capturing}
+          disabled={loading}
         >
           {#each MODEL_GROUPS as g}
             <optgroup label={g.family}>
@@ -199,7 +181,7 @@
             max="10"
             step="1"
             bind:value={cfg.beam_size}
-            disabled={loading || capturing}
+            disabled={loading}
           />
           <span class="muted small">{cfg.beam_size <= 1 ? "greedy" : "beam search"}</span>
         </div>
@@ -213,7 +195,7 @@
             aria-checked={cfg.use_vad}
             aria-label="Trim silence with VAD"
             onclick={() => (cfg!.use_vad = !cfg!.use_vad)}
-            disabled={loading || capturing}
+            disabled={loading}
           >
             <span class="thumb" class:on={cfg.use_vad}></span>
           </button>
@@ -229,37 +211,9 @@
             max="0.9"
             step="0.05"
             bind:value={cfg.vad_threshold}
-            disabled={loading || capturing || !cfg.use_vad}
+            disabled={loading || !cfg.use_vad}
           />
           <span class="muted small">speech probability</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Trigger</h2>
-        <span class="muted">Hold, speak, release</span>
-      </div>
-      <div class="field">
-        <span class="label">Key</span>
-        <div class="grow row-right">
-          <kbd class:capturing>{capturing ? "Press a key…" : cfg.hotkey}</kbd>
-          <button class="ghost" type="button" onclick={rebindHotkey} disabled={loading || capturing}>Rebind</button>
-        </div>
-      </div>
-      <div class="field">
-        <span class="label">Arm threshold</span>
-        <div class="grow row-right">
-          <input
-            type="number"
-            min="100"
-            max="5000"
-            step="50"
-            bind:value={cfg.arm_threshold_ms}
-            disabled={loading || capturing}
-          />
-          <span class="muted small">ms</span>
         </div>
       </div>
     </section>
@@ -274,7 +228,7 @@
         <select
           class="grow"
           bind:value={cfg.input_device}
-          disabled={loading || capturing}
+          disabled={loading}
         >
           <option value={null}>System default</option>
           {#each devices as d}
@@ -297,7 +251,7 @@
             aria-checked={autostart}
             aria-label="Start on login"
             onclick={() => toggleAutostart(!autostart)}
-            disabled={loading || capturing}
+            disabled={loading}
           >
             <span class="thumb" class:on={autostart}></span>
           </button>
@@ -307,13 +261,13 @@
 
     <footer>
       <div class="status status-{statusKind}">{status}</div>
-      <button class="primary" onclick={save} disabled={!dirty || loading || capturing}>
+      <button class="primary" onclick={save} disabled={!dirty || loading}>
         Save changes
       </button>
     </footer>
 
     <p class="hint">
-      Hold <kbd class="inline">{cfg.hotkey}</kbd> for {cfg.arm_threshold_ms} ms to begin recording. Release to transcribe and type at the cursor.
+      Hold <kbd class="inline">Ctrl</kbd> + <kbd class="inline">Win</kbd> to record. Release to transcribe and type at the cursor.
     </p>
   {/if}
 </main>
@@ -432,33 +386,6 @@
     color: var(--text);
   }
 
-  .model-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-  }
-  .model-option {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    cursor: pointer;
-    transition: border-color 0.12s, background 0.12s;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .model-option:hover { border-color: var(--accent); }
-  .model-option.active {
-    border-color: var(--accent);
-    background: var(--accent-weak);
-  }
-  .model-option input { display: none; }
-  .model-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
   select, input[type="number"] {
     padding: 7px 10px;
     border: 1px solid var(--border);
@@ -487,15 +414,6 @@
     padding: 1px 6px;
     font-size: 11px;
   }
-  kbd.capturing {
-    border-style: dashed;
-    border-color: var(--accent);
-    color: var(--accent);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    50% { opacity: 0.55; }
-  }
 
   button {
     font: inherit;
@@ -511,7 +429,6 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
-  button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   button.primary {
     background: var(--accent);
     border-color: var(--accent);
