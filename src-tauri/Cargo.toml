@@ -30,5 +30,4 @@ anyhow = "1"
 whisper-rs = "0.16"
 reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
 dirs = "5"
-enigo = "0.2"
 

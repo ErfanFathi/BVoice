@@ -36,6 +36,8 @@ sudo dnf install ./BVoice-0.1.1-1.x86_64.rpm
 
 After install you'll find BVoice in your application menu. On first launch the selected whisper model (~75–466 MB) downloads to `~/.local/share/bvoice/models/`.
 
+The packages declare a runtime dependency on **`xdotool`** — used to type the transcription at the cursor.
+
 ## Features
 
 - Push-to-talk trigger: hold **Ctrl + Win** (instant arm — no hold delay)
@@ -89,7 +91,7 @@ All fields are editable from the Settings window and persist on Save.
   ```
   sudo apt install \
     libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev \
-    libasound2-dev libpulse-dev libxdo-dev libclang-dev libssl-dev libstdc++-12-dev \
+    libasound2-dev libpulse-dev libclang-dev libssl-dev libstdc++-12-dev \
     pkg-config build-essential
   ```
 
@@ -123,8 +125,8 @@ hotkey (rdev, X11 XRecord)  ─▶ state machine (Ctrl+Win chord)
                                                       else greedy; nonverbal segments filtered)
                                    │
                                    ▼
-                             inject::paste         (enigo.text() — types at cursor,
-                                                    no clipboard)
+                             inject::paste         (xdotool type --delay 0 —
+                                                    types at cursor, no clipboard)
 
 watchdog thread: forces reset if Recording > 60s or Transcribing > 45s
 ```
