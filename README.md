@@ -89,7 +89,7 @@ All fields are editable from the Settings window and persist on Save.
   ```
   sudo apt install \
     libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev \
-    libasound2-dev libxdo-dev libclang-dev libssl-dev libstdc++-12-dev \
+    libasound2-dev libpulse-dev libxdo-dev libclang-dev libssl-dev libstdc++-12-dev \
     pkg-config build-essential
   ```
 
@@ -104,22 +104,29 @@ npm run tauri build        # release bundles (.deb + .rpm)
 ## Architecture
 
 ```
+setup (background thread):  model::ensure_model  ─▶  transcribe::init  (whisper-rs context)
+
 hotkey (rdev, X11 XRecord)  ─▶ state machine (Ctrl+Win chord)
                                    │
                              armed ▼
-                             audio::start   (cpal, dedicated thread)
+                             audio::start          (cpal capture on dedicated thread,
+                                                    PulseAudio source via libpulse-binding)
                                    │
                           released ▼
-                             audio::stop    (mono + rubato 16 kHz)
+                             audio::stop           (downmix to mono → rubato 48→16 kHz)
+                                   │
+                       (if use_vad) ▼
+                             vad::trim_silence_with  (Silero VAD, configurable threshold)
                                    │
                                    ▼
-                             vad::trim_silence  (Silero VAD)
+                             transcribe::transcribe  (whisper-rs, beam_size≥2 → beam search,
+                                                      else greedy; nonverbal segments filtered)
                                    │
                                    ▼
-                             transcribe::transcribe  (whisper-rs, beam search)
-                                   │
-                                   ▼
-                             inject::paste  (enigo — types at cursor)
+                             inject::paste         (enigo.text() — types at cursor,
+                                                    no clipboard)
+
+watchdog thread: forces reset if Recording > 60s or Transcribing > 45s
 ```
 
 ## License
