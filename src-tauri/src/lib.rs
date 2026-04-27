@@ -71,7 +71,7 @@ fn set_config(app: tauri::AppHandle, new: config::Config) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn list_input_devices() -> Vec<String> {
+fn list_input_devices() -> Vec<audio::DeviceInfo> {
     audio::list_devices()
 }
 

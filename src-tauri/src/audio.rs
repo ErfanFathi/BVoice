@@ -1,9 +1,24 @@
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use serde::Serialize;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
+use libpulse_binding::callbacks::ListResult;
+use libpulse_binding::context::{Context, FlagSet as ContextFlagSet, State as ContextState};
+use libpulse_binding::def::PortAvailable;
+use libpulse_binding::mainloop::standard::{IterateResult, Mainloop};
+use libpulse_binding::proplist::{properties, Proplist};
+
 pub const TARGET_RATE: u32 = 16_000;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceInfo {
+    pub name: String,
+    pub description: String,
+}
 
 struct Controller {
     stop_tx: mpsc::Sender<()>,
@@ -17,48 +32,95 @@ pub fn set_device(name: Option<String>) {
     *DEVICE_NAME.lock().unwrap() = name;
 }
 
-pub fn list_devices() -> Vec<String> {
-    let host = cpal::default_host();
-    let Ok(devs) = host.input_devices() else {
-        return Vec::new();
-    };
-    let mut names: Vec<String> = devs
-        .filter_map(|d| {
-            let name = d.name().ok()?;
-            if d.default_input_config().is_err() {
-                return None;
-            }
-            if is_alsa_noise(&name) {
-                return None;
-            }
-            Some(name)
-        })
-        .collect();
-    names.sort();
-    names.dedup();
-    names
+pub fn list_devices() -> Vec<DeviceInfo> {
+    match list_pulse_sources() {
+        Ok(list) => list,
+        Err(e) => {
+            eprintln!("[bvoice] PulseAudio source enumeration failed: {:?}", e);
+            Vec::new()
+        }
+    }
 }
 
-fn is_alsa_noise(name: &str) -> bool {
-    const PREFIXES: &[&str] = &["hw:", "plughw:", "front:", "rear:", "side:", "surround"];
-    const CONTAINS: &[&str] = &[
-        "hdmi",
-        "iec958",
-        "spdif",
-        "sysdefault",
-        "dmix",
-        "dsnoop",
-        "upmix",
-        "vdownmix",
-        "samplerate",
-        "speexrate",
-        "lavrate",
-        "oss",
-        "null",
-    ];
-    let lower = name.to_ascii_lowercase();
-    PREFIXES.iter().any(|p| lower.starts_with(p))
-        || CONTAINS.iter().any(|c| lower.contains(c))
+fn list_pulse_sources() -> Result<Vec<DeviceInfo>> {
+    let mut proplist = Proplist::new().ok_or_else(|| anyhow!("PA proplist init failed"))?;
+    proplist
+        .set_str(properties::APPLICATION_NAME, "BVoice")
+        .map_err(|_| anyhow!("PA set application.name failed"))?;
+
+    let mut mainloop = Mainloop::new().ok_or_else(|| anyhow!("PA mainloop init failed"))?;
+    let ctx = Rc::new(RefCell::new(
+        Context::new_with_proplist(&mainloop, "BVoice", &proplist)
+            .ok_or_else(|| anyhow!("PA context init failed"))?,
+    ));
+
+    ctx.borrow_mut()
+        .connect(None, ContextFlagSet::NOFLAGS, None)
+        .map_err(|e| anyhow!("PA connect failed: {:?}", e))?;
+
+    loop {
+        match mainloop.iterate(true) {
+            IterateResult::Quit(_) | IterateResult::Err(_) => {
+                return Err(anyhow!("PA mainloop iterate failed during connect"));
+            }
+            IterateResult::Success(_) => {}
+        }
+        match ctx.borrow().get_state() {
+            ContextState::Ready => break,
+            ContextState::Failed | ContextState::Terminated => {
+                return Err(anyhow!("PA context failed before ready"));
+            }
+            _ => {}
+        }
+    }
+
+    let sources: Rc<RefCell<Vec<DeviceInfo>>> = Rc::new(RefCell::new(Vec::new()));
+    let done = Rc::new(RefCell::new(false));
+
+    let sources_cb = Rc::clone(&sources);
+    let done_cb = Rc::clone(&done);
+
+    let introspect = ctx.borrow().introspect();
+    let _op = introspect.get_source_info_list(move |result| match result {
+        ListResult::Item(info) => {
+            if info.monitor_of_sink.is_some() {
+                return;
+            }
+            if let Some(port) = &info.active_port {
+                if port.available == PortAvailable::No {
+                    return;
+                }
+            }
+            let name = info.name.as_ref().map(|s| s.to_string()).unwrap_or_default();
+            if name.is_empty() {
+                return;
+            }
+            let description = info
+                .description
+                .as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| name.clone());
+            sources_cb
+                .borrow_mut()
+                .push(DeviceInfo { name, description });
+        }
+        ListResult::End | ListResult::Error => {
+            *done_cb.borrow_mut() = true;
+        }
+    });
+
+    while !*done.borrow() {
+        match mainloop.iterate(true) {
+            IterateResult::Quit(_) | IterateResult::Err(_) => break,
+            IterateResult::Success(_) => {}
+        }
+    }
+
+    ctx.borrow_mut().disconnect();
+
+    let mut out: Vec<DeviceInfo> = sources.borrow().clone();
+    out.sort_by(|a, b| a.description.cmp(&b.description));
+    Ok(out)
 }
 
 pub fn start() -> Result<()> {
@@ -100,16 +162,21 @@ pub fn stop() -> Option<Vec<f32>> {
 type StreamBundle = (cpal::Stream, Arc<Mutex<Vec<f32>>>, u32, u16);
 
 fn build_stream() -> Result<StreamBundle> {
-    let host = cpal::default_host();
     let selected = DEVICE_NAME.lock().unwrap().clone();
-    let device = match selected {
-        Some(name) => host
-            .input_devices()?
-            .find(|d| d.name().ok().as_deref() == Some(name.as_str()))
-            .ok_or_else(|| anyhow!("input device '{}' not found", name))?,
-        None => host
-            .default_input_device()
-            .ok_or_else(|| anyhow!("no default input device"))?,
+    match &selected {
+        Some(name) => std::env::set_var("PULSE_SOURCE", name),
+        None => std::env::remove_var("PULSE_SOURCE"),
+    }
+
+    let host = cpal::default_host();
+    let device = if selected.is_some() {
+        host.input_devices()?
+            .find(|d| d.name().ok().as_deref() == Some("pulse"))
+            .or_else(|| host.default_input_device())
+            .ok_or_else(|| anyhow!("no pulse or default input device"))?
+    } else {
+        host.default_input_device()
+            .ok_or_else(|| anyhow!("no default input device"))?
     };
     let config = device.default_input_config()?;
     let source_rate = config.sample_rate().0;
@@ -229,4 +296,3 @@ fn linear_resample(input: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
     }
     out
 }
-

@@ -17,6 +17,7 @@
   };
 
   type Progress = { model: string; downloaded: number; total: number; pct: number };
+  type DeviceInfo = { name: string; description: string };
 
   type ModelOption = { value: string; label: string; size: string };
   type ModelGroup = { family: string; options: ModelOption[] };
@@ -50,7 +51,7 @@
 
   let cfg = $state<Config | null>(null);
   let initial = $state<Config | null>(null);
-  let devices = $state<string[]>([]);
+  let devices = $state<DeviceInfo[]>([]);
   let status = $state("");
   let statusKind = $state<"idle" | "saved" | "error">("idle");
   let progress = $state<Progress | null>(null);
@@ -61,7 +62,7 @@
     const c = await invoke<Config>("get_config");
     cfg = c;
     initial = { ...c };
-    devices = await invoke<string[]>("list_input_devices");
+    devices = await invoke<DeviceInfo[]>("list_input_devices");
     autostart = await isAutostartEnabled();
 
     await listen<Progress>("bvoice:download-progress", (e) => {
@@ -232,7 +233,7 @@
         >
           <option value={null}>System default</option>
           {#each devices as d}
-            <option value={d}>{d}</option>
+            <option value={d.name}>{d.description}</option>
           {/each}
         </select>
       </div>
