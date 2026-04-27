@@ -5,7 +5,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
-  plugins: [svelte()],
+  plugins: [svelte({ emitCss: false })],
   clearScreen: false,
   server: {
     port: 1420,
