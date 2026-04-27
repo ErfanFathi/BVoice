@@ -10,35 +10,59 @@
 
   type Config = {
     model: string;
-    arm_threshold_ms: number;
     input_device: string | null;
-    hotkey: string;
     beam_size: number;
+    use_vad: boolean;
+    vad_threshold: number;
   };
 
   type Progress = { model: string; downloaded: number; total: number; pct: number };
+  type DeviceInfo = { name: string; description: string };
 
-  const MODELS = [
-    { value: "tiny.en", label: "tiny.en", size: "~75 MB" },
-    { value: "base.en", label: "base.en", size: "~142 MB" },
-    { value: "small.en", label: "small.en", size: "~466 MB" },
+  type ModelOption = { value: string; label: string; size: string };
+  type ModelGroup = { family: string; options: ModelOption[] };
+
+  const MODEL_GROUPS: ModelGroup[] = [
+    {
+      family: "tiny.en",
+      options: [
+        { value: "tiny.en", label: "Full precision", size: "~75 MB" },
+        { value: "tiny.en-q5_1", label: "Q5_1 quantized", size: "~31 MB" },
+        { value: "tiny.en-q8_0", label: "Q8_0 quantized", size: "~42 MB" },
+      ],
+    },
+    {
+      family: "base.en",
+      options: [
+        { value: "base.en", label: "Full precision", size: "~142 MB" },
+        { value: "base.en-q5_1", label: "Q5_1 quantized", size: "~57 MB" },
+        { value: "base.en-q8_0", label: "Q8_0 quantized", size: "~81 MB" },
+      ],
+    },
+    {
+      family: "small.en",
+      options: [
+        { value: "small.en", label: "Full precision", size: "~466 MB" },
+        { value: "small.en-q5_1", label: "Q5_1 quantized", size: "~181 MB" },
+        { value: "small.en-q8_0", label: "Q8_0 quantized", size: "~253 MB" },
+      ],
+    },
   ];
 
   let cfg = $state<Config | null>(null);
   let initial = $state<Config | null>(null);
-  let devices = $state<string[]>([]);
+  let devices = $state<DeviceInfo[]>([]);
   let status = $state("");
   let statusKind = $state<"idle" | "saved" | "error">("idle");
   let progress = $state<Progress | null>(null);
   let loading = $state(false);
-  let capturing = $state(false);
   let autostart = $state(false);
 
   onMount(async () => {
     const c = await invoke<Config>("get_config");
     cfg = c;
     initial = { ...c };
-    devices = await invoke<string[]>("list_input_devices");
+    devices = await invoke<DeviceInfo[]>("list_input_devices");
     autostart = await isAutostartEnabled();
 
     await listen<Progress>("bvoice:download-progress", (e) => {
@@ -53,10 +77,6 @@
       loading = false;
       progress = null;
       setStatus(`Error: ${e.payload}`, "error");
-    });
-    await listen<string>("bvoice:hotkey-captured", (e) => {
-      if (cfg) cfg.hotkey = e.payload;
-      capturing = false;
     });
   });
 
@@ -87,17 +107,6 @@
     } catch (e) {
       loading = false;
       progress = null;
-      setStatus(`Error: ${e}`, "error");
-    }
-  }
-
-  async function rebindHotkey() {
-    capturing = true;
-    setStatus("Press any key to bind…", "idle");
-    try {
-      await invoke("capture_hotkey");
-    } catch (e) {
-      capturing = false;
       setStatus(`Error: ${e}`, "error");
     }
   }
@@ -135,23 +144,21 @@
       <div class="card-head">
         <h2>Transcription model</h2>
       </div>
-      <div class="model-grid">
-        {#each MODELS as m}
-          <label class="model-option" class:active={cfg.model === m.value}>
-            <input
-              type="radio"
-              name="model"
-              value={m.value}
-              checked={cfg.model === m.value}
-              onchange={() => (cfg!.model = m.value)}
-              disabled={loading || capturing}
-            />
-            <div class="model-info">
-              <strong>{m.label}</strong>
-              <span class="muted small">{m.size}</span>
-            </div>
-          </label>
-        {/each}
+      <div class="field">
+        <span class="label">Model</span>
+        <select
+          class="grow"
+          bind:value={cfg.model}
+          disabled={loading}
+        >
+          {#each MODEL_GROUPS as g}
+            <optgroup label={g.family}>
+              {#each g.options as o}
+                <option value={o.value}>{o.label} — {o.size}</option>
+              {/each}
+            </optgroup>
+          {/each}
+        </select>
       </div>
       {#if loading && progress}
         <div class="progress">
@@ -175,37 +182,39 @@
             max="10"
             step="1"
             bind:value={cfg.beam_size}
-            disabled={loading || capturing}
+            disabled={loading}
           />
           <span class="muted small">{cfg.beam_size <= 1 ? "greedy" : "beam search"}</span>
         </div>
       </div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Trigger</h2>
-        <span class="muted">Hold, speak, release</span>
-      </div>
       <div class="field">
-        <span class="label">Key</span>
+        <span class="label">Trim silence</span>
         <div class="grow row-right">
-          <kbd class:capturing>{capturing ? "Press a key…" : cfg.hotkey}</kbd>
-          <button class="ghost" type="button" onclick={rebindHotkey} disabled={loading || capturing}>Rebind</button>
+          <button
+            class="toggle"
+            role="switch"
+            aria-checked={cfg.use_vad}
+            aria-label="Trim silence with VAD"
+            onclick={() => (cfg!.use_vad = !cfg!.use_vad)}
+            disabled={loading}
+          >
+            <span class="thumb" class:on={cfg.use_vad}></span>
+          </button>
+          <span class="muted small">Silero VAD</span>
         </div>
       </div>
       <div class="field">
-        <span class="label">Arm threshold</span>
+        <span class="label">VAD threshold</span>
         <div class="grow row-right">
           <input
             type="number"
-            min="100"
-            max="5000"
-            step="50"
-            bind:value={cfg.arm_threshold_ms}
-            disabled={loading || capturing}
+            min="0.1"
+            max="0.9"
+            step="0.05"
+            bind:value={cfg.vad_threshold}
+            disabled={loading || !cfg.use_vad}
           />
-          <span class="muted small">ms</span>
+          <span class="muted small">speech probability</span>
         </div>
       </div>
     </section>
@@ -220,11 +229,11 @@
         <select
           class="grow"
           bind:value={cfg.input_device}
-          disabled={loading || capturing}
+          disabled={loading}
         >
           <option value={null}>System default</option>
           {#each devices as d}
-            <option value={d}>{d}</option>
+            <option value={d.name}>{d.description}</option>
           {/each}
         </select>
       </div>
@@ -243,7 +252,7 @@
             aria-checked={autostart}
             aria-label="Start on login"
             onclick={() => toggleAutostart(!autostart)}
-            disabled={loading || capturing}
+            disabled={loading}
           >
             <span class="thumb" class:on={autostart}></span>
           </button>
@@ -253,13 +262,13 @@
 
     <footer>
       <div class="status status-{statusKind}">{status}</div>
-      <button class="primary" onclick={save} disabled={!dirty || loading || capturing}>
+      <button class="primary" onclick={save} disabled={!dirty || loading}>
         Save changes
       </button>
     </footer>
 
     <p class="hint">
-      Hold <kbd class="inline">{cfg.hotkey}</kbd> for {cfg.arm_threshold_ms} ms to begin recording. Release to transcribe and type at the cursor.
+      Hold <kbd class="inline">Ctrl</kbd> + <kbd class="inline">Win</kbd> to record. Release to transcribe and type at the cursor.
     </p>
   {/if}
 </main>
@@ -378,33 +387,6 @@
     color: var(--text);
   }
 
-  .model-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-  }
-  .model-option {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    cursor: pointer;
-    transition: border-color 0.12s, background 0.12s;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .model-option:hover { border-color: var(--accent); }
-  .model-option.active {
-    border-color: var(--accent);
-    background: var(--accent-weak);
-  }
-  .model-option input { display: none; }
-  .model-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
   select, input[type="number"] {
     padding: 7px 10px;
     border: 1px solid var(--border);
@@ -433,15 +415,6 @@
     padding: 1px 6px;
     font-size: 11px;
   }
-  kbd.capturing {
-    border-style: dashed;
-    border-color: var(--accent);
-    color: var(--accent);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    50% { opacity: 0.55; }
-  }
 
   button {
     font: inherit;
@@ -457,7 +430,6 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
-  button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   button.primary {
     background: var(--accent);
     border-color: var(--accent);

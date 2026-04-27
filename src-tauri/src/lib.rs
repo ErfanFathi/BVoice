@@ -30,11 +30,7 @@ fn get_config() -> config::Config {
 fn set_config(app: tauri::AppHandle, new: config::Config) -> Result<(), String> {
     let old = config::load();
     let model_changed = old.model != new.model;
-    hotkey::set_arm_threshold_ms(new.arm_threshold_ms);
     audio::set_device(new.input_device.clone());
-    if let Some(k) = hotkey::key_from_str(&new.hotkey) {
-        hotkey::set_trigger(k);
-    }
     config::save(&new).map_err(|e| e.to_string())?;
     if model_changed {
         let new_model = new.model.clone();
@@ -75,23 +71,13 @@ fn set_config(app: tauri::AppHandle, new: config::Config) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn list_input_devices() -> Vec<String> {
+fn list_input_devices() -> Vec<audio::DeviceInfo> {
     audio::list_devices()
-}
-
-#[tauri::command]
-fn capture_hotkey() {
-    hotkey::start_capture();
 }
 
 pub fn run() {
     let cfg = config::load();
-    let threshold_ms = cfg.arm_threshold_ms;
-    hotkey::set_arm_threshold_ms(threshold_ms);
     audio::set_device(cfg.input_device.clone());
-    if let Some(k) = hotkey::key_from_str(&cfg.hotkey) {
-        hotkey::set_trigger(k);
-    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -107,8 +93,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             set_config,
-            list_input_devices,
-            capture_hotkey
+            list_input_devices
         ])
         .setup(move |app| {
             tray::init(app)?;
@@ -121,9 +106,12 @@ pub fn run() {
                 }
             });
 
-            let app_handle = app.handle().clone();
             hotkey::start_listener(move |event| match event {
                 HotkeyEvent::Armed => {
+                    if !transcribe::is_ready() {
+                        eprintln!("[bvoice] model still loading — ignoring hold");
+                        return;
+                    }
                     if let Err(e) = audio::start() {
                         eprintln!("[bvoice] audio start failed: {:?}", e);
                     } else {
@@ -149,16 +137,23 @@ pub fn run() {
                         return;
                     }
                     tray::set_state(tray::State::Transcribing);
-                    let beam_size = config::load().beam_size;
+                    let cfg = config::load();
+                    let beam_size = cfg.beam_size;
+                    let use_vad = cfg.use_vad;
+                    let vad_threshold = cfg.vad_threshold;
                     thread::spawn(move || {
-                        let trimmed = vad::trim_silence(samples);
-                        if trimmed.is_empty() {
+                        let prepared = if use_vad {
+                            vad::trim_silence_with(samples, vad_threshold, vad::DEFAULT_PAD_CHUNKS)
+                        } else {
+                            samples
+                        };
+                        if prepared.is_empty() {
                             println!("[bvoice] no speech detected");
                             tray::set_state(tray::State::Idle);
                             return;
                         }
                         let t0 = std::time::Instant::now();
-                        match transcribe::transcribe(&trimmed, beam_size) {
+                        match transcribe::transcribe(&prepared, beam_size) {
                             Ok(text) => {
                                 println!(
                                     "[bvoice] transcribed ({}ms): {:?}",
@@ -174,16 +169,30 @@ pub fn run() {
                         tray::set_state(tray::State::Idle);
                     });
                 }
-                HotkeyEvent::Cancelled => println!("[bvoice] cancelled"),
-                HotkeyEvent::Captured(key) => {
-                    println!("[bvoice] hotkey captured: {}", key);
-                    let _ = app_handle.emit("bvoice:hotkey-captured", key);
+            });
+            println!("[bvoice] listener up — hold Ctrl+Win to record");
+
+            thread::spawn(|| loop {
+                thread::sleep(std::time::Duration::from_secs(2));
+                let Some((state, age)) = tray::state_with_age() else {
+                    continue;
+                };
+                let stuck = match state {
+                    tray::State::Recording => age > std::time::Duration::from_secs(60),
+                    tray::State::Transcribing => age > std::time::Duration::from_secs(45),
+                    tray::State::Idle => false,
+                };
+                if stuck {
+                    eprintln!(
+                        "[bvoice] watchdog: {:?} stuck {:.1}s, forcing reset",
+                        state,
+                        age.as_secs_f32()
+                    );
+                    let _ = audio::stop();
+                    hotkey::reset();
+                    tray::set_state(tray::State::Idle);
                 }
             });
-            println!(
-                "[bvoice] listener up — hold {} >{}ms to record",
-                cfg.hotkey, threshold_ms
-            );
 
             Ok(())
         })

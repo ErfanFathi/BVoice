@@ -2,10 +2,9 @@ use voice_activity_detector::VoiceActivityDetector;
 
 const CHUNK_SIZE: usize = 512; // 32 ms at 16 kHz
 const SAMPLE_RATE: i64 = 16_000;
-const THRESHOLD: f32 = 0.5;
-const PAD_CHUNKS: usize = 4; // ~128 ms of context preserved
+pub const DEFAULT_PAD_CHUNKS: usize = 4; // ~128 ms of context preserved
 
-pub fn trim_silence(samples: Vec<f32>) -> Vec<f32> {
+pub fn trim_silence_with(samples: Vec<f32>, threshold: f32, pad_chunks: usize) -> Vec<f32> {
     if samples.len() < CHUNK_SIZE {
         return samples;
     }
@@ -28,7 +27,7 @@ pub fn trim_silence(samples: Vec<f32>) -> Vec<f32> {
             break;
         }
         let p = vad.predict(chunk.to_vec());
-        speech.push(p > THRESHOLD);
+        speech.push(p > threshold);
     }
 
     let first = speech.iter().position(|&s| s);
@@ -36,8 +35,8 @@ pub fn trim_silence(samples: Vec<f32>) -> Vec<f32> {
 
     match (first, last) {
         (Some(f), Some(l)) => {
-            let start = f.saturating_sub(PAD_CHUNKS) * CHUNK_SIZE;
-            let end = ((l + 1 + PAD_CHUNKS) * CHUNK_SIZE).min(samples.len());
+            let start = f.saturating_sub(pad_chunks) * CHUNK_SIZE;
+            let end = ((l + 1 + pad_chunks) * CHUNK_SIZE).min(samples.len());
             samples[start..end].to_vec()
         }
         _ => Vec::new(),

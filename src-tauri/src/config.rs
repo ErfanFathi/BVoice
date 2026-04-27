@@ -5,30 +5,35 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub model: String,
-    pub arm_threshold_ms: u64,
     pub input_device: Option<String>,
-    #[serde(default = "default_hotkey")]
-    pub hotkey: String,
     #[serde(default = "default_beam_size")]
     pub beam_size: u32,
-}
-
-fn default_hotkey() -> String {
-    "AltGr".to_string()
+    #[serde(default = "default_use_vad")]
+    pub use_vad: bool,
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: f32,
 }
 
 fn default_beam_size() -> u32 {
-    5
+    2
+}
+
+fn default_use_vad() -> bool {
+    false
+}
+
+fn default_vad_threshold() -> f32 {
+    0.5
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             model: "base.en".to_string(),
-            arm_threshold_ms: 1000,
             input_device: None,
-            hotkey: default_hotkey(),
             beam_size: default_beam_size(),
+            use_vad: default_use_vad(),
+            vad_threshold: default_vad_threshold(),
         }
     }
 }

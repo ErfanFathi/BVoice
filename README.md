@@ -26,23 +26,25 @@ Grab the latest build from the [**Releases page**](https://github.com/ErfanFathi
 
 **Debian / Ubuntu** — `.deb`:
 ```
-sudo apt install ./BVoice_0.1.0_amd64.deb
+sudo apt install ./BVoice_0.1.1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE** — `.rpm`:
 ```
-sudo dnf install ./BVoice-0.1.0-1.x86_64.rpm
+sudo dnf install ./BVoice-0.1.1-1.x86_64.rpm
 ```
 
 After install you'll find BVoice in your application menu. On first launch the selected whisper model (~75–466 MB) downloads to `~/.local/share/bvoice/models/`.
 
+The packages declare a runtime dependency on **`xdotool`** — used to type the transcription at the cursor.
+
 ## Features
 
-- Push-to-talk trigger (default: Right-Alt), rebindable from the settings window
-- Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`)
-- Silero VAD trims silence before transcription
+- Push-to-talk trigger: hold **Ctrl + Win** (instant arm — no hold delay)
+- Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`, full or quantized `q5_1` / `q8_0`)
+- Optional Silero VAD silence trim with tunable threshold
 - FFT-based resampling (rubato) for high-quality 48 kHz → 16 kHz conversion
-- Beam search (configurable size, default 5) or greedy decoding
+- Beam search (configurable size, default 2) or greedy decoding
 - Live-applied settings for threshold, input device, and model swap — no restart
 - Tray icon reflects state (idle / recording / transcribing) using the branded icon
 - Single-instance enforcement; optional autostart on login
@@ -51,9 +53,9 @@ After install you'll find BVoice in your application menu. On first launch the s
 ## Usage
 
 1. Launch BVoice — a tray icon appears (no window by default).
-2. Click the tray icon → Settings to configure model, hotkey, input device, beam size, and autostart.
+2. Click the tray icon → Settings to configure model, input device, beam size, VAD, and autostart.
 3. Focus any text field (editor, terminal, browser, …).
-4. **Hold the trigger key for ≥ the arm threshold (default 1 s), speak, release.**
+4. **Hold Ctrl + Win, speak, release.**
 5. The transcription is typed at the cursor.
 
 ## Platform support
@@ -66,13 +68,15 @@ After install you'll find BVoice in your application menu. On first launch the s
 
 Settings persist at `~/.config/bvoice/config.toml`:
 
-| Key                | Type          | Default   | Description                                       |
-|--------------------|---------------|-----------|---------------------------------------------------|
-| `model`            | string        | `base.en` | Whisper model (`tiny.en`, `base.en`, `small.en`)  |
-| `arm_threshold_ms` | u64           | `1000`    | Hold duration before recording arms               |
-| `input_device`     | string\|null  | `null`    | Input device name; null = system default          |
-| `hotkey`           | string        | `AltGr`   | Trigger key (rebindable from the settings window) |
-| `beam_size`        | u32           | `5`       | Beam search size; `1` = greedy                    |
+| Key                | Type          | Default   | Description                                                |
+|--------------------|---------------|-----------|------------------------------------------------------------|
+| `model`            | string        | `base.en` | Whisper model; append `-q5_1` or `-q8_0` for quantized     |
+| `input_device`     | string\|null  | `null`    | Input device name; null = system default                   |
+| `beam_size`        | u32           | `2`       | Beam search size; `1` = greedy                             |
+| `use_vad`          | bool          | `false`   | Trim silence with Silero VAD before transcription          |
+| `vad_threshold`    | f32           | `0.5`     | VAD speech probability threshold (0–1); active when on     |
+
+The trigger is hardcoded to **Ctrl + Win** and is not user-configurable.
 
 All fields are editable from the Settings window and persist on Save.
 
@@ -87,7 +91,7 @@ All fields are editable from the Settings window and persist on Save.
   ```
   sudo apt install \
     libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev \
-    libasound2-dev libxdo-dev libclang-dev libssl-dev libstdc++-12-dev \
+    libasound2-dev libpulse-dev libclang-dev libssl-dev libstdc++-12-dev \
     pkg-config build-essential
   ```
 
@@ -102,22 +106,29 @@ npm run tauri build        # release bundles (.deb + .rpm)
 ## Architecture
 
 ```
-hotkey (rdev, X11 XRecord)  ─▶ state machine (arm-on-1s)
+setup (background thread):  model::ensure_model  ─▶  transcribe::init  (whisper-rs context)
+
+hotkey (rdev, X11 XRecord)  ─▶ state machine (Ctrl+Win chord)
                                    │
                              armed ▼
-                             audio::start   (cpal, dedicated thread)
+                             audio::start          (cpal capture on dedicated thread,
+                                                    PulseAudio source via libpulse-binding)
                                    │
                           released ▼
-                             audio::stop    (mono + rubato 16 kHz)
+                             audio::stop           (downmix to mono → rubato 48→16 kHz)
+                                   │
+                       (if use_vad) ▼
+                             vad::trim_silence_with  (Silero VAD, configurable threshold)
                                    │
                                    ▼
-                             vad::trim_silence  (Silero VAD)
+                             transcribe::transcribe  (whisper-rs, beam_size≥2 → beam search,
+                                                      else greedy; nonverbal segments filtered)
                                    │
                                    ▼
-                             transcribe::transcribe  (whisper-rs, beam search)
-                                   │
-                                   ▼
-                             inject::paste  (enigo — types at cursor)
+                             inject::paste         (xdotool type --delay 0 —
+                                                    types at cursor, no clipboard)
+
+watchdog thread: forces reset if Recording > 60s or Transcribing > 45s
 ```
 
 ## License

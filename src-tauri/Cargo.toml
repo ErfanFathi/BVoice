@@ -1,11 +1,9 @@
 [package]
 name = "bvoice"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local push-to-talk speech-to-text"
 authors = ["Erfan Fathi"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -26,10 +24,10 @@ toml = "0.8"
 rdev = "0.5"
 cpal = "0.15"
 rubato = "0.16"
+libpulse-binding = "2"
 voice_activity_detector = "0.2"
 anyhow = "1"
 whisper-rs = "0.16"
 reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
 dirs = "5"
-enigo = "0.2"
 
