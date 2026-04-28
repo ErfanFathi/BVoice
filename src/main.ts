@@ -4,11 +4,6 @@ import "./App.css";
 import App from "./App.svelte";
 import Overlay from "./Overlay.svelte";
 
-const label = getCurrentWindow().label;
-
-const component = label === "overlay" ? Overlay : App;
-if (label === "overlay") {
-  document.body.dataset.overlay = "true";
-}
+const component = getCurrentWindow().label === "overlay" ? Overlay : App;
 
 export default mount(component, { target: document.getElementById("app")! });

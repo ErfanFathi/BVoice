@@ -114,7 +114,6 @@ pub fn run() {
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
-            .focused(false)
             .visible(true)
             .build()?;
 
