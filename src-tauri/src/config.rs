@@ -17,7 +17,7 @@ pub struct Config {
 }
 
 fn default_beam_size() -> u32 {
-    2
+    1
 }
 
 fn default_use_vad() -> bool {

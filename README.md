@@ -51,7 +51,7 @@ The terminal command is still `bvoice` — only the package name carries the hyp
 - Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`, full or quantized `q5_1` / `q8_0`)
 - Optional Silero VAD silence trim with tunable threshold
 - FFT-based resampling (rubato) for high-quality 48 kHz → 16 kHz conversion
-- Beam search (configurable size, default 2) or greedy decoding
+- Greedy decoding by default; configurable beam search (set `beam_size` ≥ 2)
 - Live-applied settings for threshold, input device, and model swap — no restart
 - Always-on-top desktop overlay reflects state (idle / recording / transcribing) with red and orange pulse animations; draggable, position persists
 - Single-instance enforcement; optional autostart on login
@@ -79,7 +79,7 @@ Settings persist at `~/.config/bvoice/config.toml`:
 |--------------------|---------------|-----------|------------------------------------------------------------|
 | `model`            | string        | `base.en` | Whisper model; append `-q5_1` or `-q8_0` for quantized     |
 | `input_device`     | string\|null  | `null`    | Input device name; null = system default                   |
-| `beam_size`        | u32           | `2`       | Beam search size; `1` = greedy                             |
+| `beam_size`        | u32           | `1`       | Beam search size; `1` = greedy                             |
 | `use_vad`          | bool          | `false`   | Trim silence with Silero VAD before transcription          |
 | `vad_threshold`    | f32           | `0.5`     | VAD speech probability threshold (0–1); active when on     |
 | `overlay_position` | [i32, i32]    | bottom-right | Desktop overlay position; written automatically when you drag it |
