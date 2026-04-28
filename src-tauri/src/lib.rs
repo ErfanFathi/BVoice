@@ -9,9 +9,38 @@ mod vad;
 
 use hotkey::HotkeyEvent;
 use serde::Serialize;
+use std::sync::Mutex;
 use std::thread;
-use tauri::{Emitter, Manager, WindowEvent};
+use std::time::{Duration, Instant};
+use tauri::{Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+
+static OVERLAY_PENDING_POS: Mutex<Option<(i32, i32, Instant)>> = Mutex::new(None);
+
+// Restrict the OS-level click region to a circle around the visible UI.
+// WebKit2GTK clamps very small windows to ~200 px so the rest of the
+// window rectangle is transparent but click-blocking; this tells the
+// X server to pass clicks through everywhere outside the circle.
+#[cfg(target_os = "linux")]
+fn apply_overlay_input_shape(window: &gtk::ApplicationWindow, radius: i32) {
+    use cairo::{RectangleInt, Region};
+    use gtk::prelude::*;
+
+    let Some(gdk_win) = window.window() else {
+        return;
+    };
+    let alloc = window.allocation();
+    let cx = alloc.width() / 2;
+    let cy = alloc.height() / 2;
+    let region = Region::create();
+    for dy in -radius..=radius {
+        let dx = ((radius * radius - dy * dy) as f64).sqrt().floor() as i32;
+        if dx > 0 {
+            let _ = region.union_rectangle(&RectangleInt::new(cx - dx, cy + dy, dx * 2, 1));
+        }
+    }
+    gdk_win.input_shape_combine_region(&region, 0, 0);
+}
 
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
@@ -97,6 +126,57 @@ pub fn run() {
         ])
         .setup(move |app| {
             tray::init(app)?;
+
+            let overlay = WebviewWindowBuilder::new(
+                app,
+                "overlay",
+                WebviewUrl::App("index.html".into()),
+            )
+            .title("BVoice Overlay")
+            .inner_size(80.0, 80.0)
+            .min_inner_size(80.0, 80.0)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .visible(true)
+            .build()?;
+
+            #[cfg(target_os = "linux")]
+            {
+                use gtk::prelude::*;
+                if let Ok(gtk_win) = overlay.gtk_window() {
+                    gtk_win.connect_size_allocate(|w, _| apply_overlay_input_shape(w, 40));
+                    apply_overlay_input_shape(&gtk_win, 40);
+                }
+            }
+
+            if let Some((x, y)) = cfg.overlay_position {
+                let _ = overlay.set_position(PhysicalPosition::new(x, y));
+            } else if let (Ok(Some(monitor)), Ok(size)) =
+                (overlay.primary_monitor(), overlay.outer_size())
+            {
+                let m_pos = monitor.position();
+                let m_size = monitor.size();
+                let margin: i32 = 32;
+                let x = m_pos.x + m_size.width as i32 - size.width as i32 - margin;
+                let y = m_pos.y + m_size.height as i32 - size.height as i32 - margin;
+                let _ = overlay.set_position(PhysicalPosition::new(x, y));
+            }
+
+            thread::spawn(|| loop {
+                thread::sleep(Duration::from_millis(300));
+                let mut guard = OVERLAY_PENDING_POS.lock().unwrap();
+                if let Some((x, y, t)) = *guard {
+                    if t.elapsed() >= Duration::from_millis(400) {
+                        let mut cfg = config::load();
+                        cfg.overlay_position = Some((x, y));
+                        let _ = config::save(&cfg);
+                        *guard = None;
+                    }
+                }
+            });
 
             let model_name = cfg.model.clone();
             thread::spawn(move || {
@@ -196,11 +276,15 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 let _ = window.hide();
                 api.prevent_close();
             }
+            WindowEvent::Moved(pos) if window.label() == "overlay" => {
+                *OVERLAY_PENDING_POS.lock().unwrap() = Some((pos.x, pos.y, Instant::now()));
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -26,17 +26,24 @@ Grab the latest build from the [**Releases page**](https://github.com/ErfanFathi
 
 **Debian / Ubuntu** — `.deb`:
 ```
-sudo apt install ./BVoice_0.1.1_amd64.deb
+sudo apt install ./BVoice_0.1.2_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE** — `.rpm`:
 ```
-sudo dnf install ./BVoice-0.1.1-1.x86_64.rpm
+sudo dnf install ./BVoice-0.1.2-1.x86_64.rpm
 ```
 
 After install you'll find BVoice in your application menu. On first launch the selected whisper model (~75–466 MB) downloads to `~/.local/share/bvoice/models/`.
 
 The packages declare a runtime dependency on **`xdotool`** — used to type the transcription at the cursor.
+
+To uninstall, the registered package name is `b-voice` (the bundler kebab-cases `BVoice`):
+```
+sudo apt remove b-voice          # Debian / Ubuntu
+sudo dnf remove b-voice          # Fedora / RHEL / openSUSE
+```
+The terminal command is still `bvoice` — only the package name carries the hyphen.
 
 ## Features
 
@@ -44,9 +51,9 @@ The packages declare a runtime dependency on **`xdotool`** — used to type the 
 - Local transcription with whisper.cpp (`tiny.en` / `base.en` / `small.en`, full or quantized `q5_1` / `q8_0`)
 - Optional Silero VAD silence trim with tunable threshold
 - FFT-based resampling (rubato) for high-quality 48 kHz → 16 kHz conversion
-- Beam search (configurable size, default 2) or greedy decoding
+- Greedy decoding by default; configurable beam search (set `beam_size` ≥ 2)
 - Live-applied settings for threshold, input device, and model swap — no restart
-- Tray icon reflects state (idle / recording / transcribing) using the branded icon
+- Always-on-top desktop overlay reflects state (idle / recording / transcribing) with red and orange pulse animations; draggable, position persists
 - Single-instance enforcement; optional autostart on login
 - Types output directly at the cursor — never touches your clipboard
 
@@ -72,13 +79,14 @@ Settings persist at `~/.config/bvoice/config.toml`:
 |--------------------|---------------|-----------|------------------------------------------------------------|
 | `model`            | string        | `base.en` | Whisper model; append `-q5_1` or `-q8_0` for quantized     |
 | `input_device`     | string\|null  | `null`    | Input device name; null = system default                   |
-| `beam_size`        | u32           | `2`       | Beam search size; `1` = greedy                             |
+| `beam_size`        | u32           | `1`       | Beam search size; `1` = greedy                             |
 | `use_vad`          | bool          | `false`   | Trim silence with Silero VAD before transcription          |
 | `vad_threshold`    | f32           | `0.5`     | VAD speech probability threshold (0–1); active when on     |
+| `overlay_position` | [i32, i32]    | bottom-right | Desktop overlay position; written automatically when you drag it |
 
 The trigger is hardcoded to **Ctrl + Win** and is not user-configurable.
 
-All fields are editable from the Settings window and persist on Save.
+The overlay icon and `overlay_position` update on drag — the rest is editable from the Settings window and persists on Save.
 
 ## Build from source
 

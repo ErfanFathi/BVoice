@@ -12,10 +12,12 @@ pub struct Config {
     pub use_vad: bool,
     #[serde(default = "default_vad_threshold")]
     pub vad_threshold: f32,
+    #[serde(default)]
+    pub overlay_position: Option<(i32, i32)>,
 }
 
 fn default_beam_size() -> u32 {
-    2
+    1
 }
 
 fn default_use_vad() -> bool {
@@ -34,6 +36,7 @@ impl Default for Config {
             beam_size: default_beam_size(),
             use_vad: default_use_vad(),
             vad_threshold: default_vad_threshold(),
+            overlay_position: None,
         }
     }
 }
