@@ -38,6 +38,13 @@ After install you'll find BVoice in your application menu. On first launch the s
 
 The packages declare a runtime dependency on **`xdotool`** — used to type the transcription at the cursor.
 
+To uninstall, the registered package name is `b-voice` (the bundler kebab-cases `BVoice`):
+```
+sudo apt remove b-voice          # Debian / Ubuntu
+sudo dnf remove b-voice          # Fedora / RHEL / openSUSE
+```
+The terminal command is still `bvoice` — only the package name carries the hyphen.
+
 ## Features
 
 - Push-to-talk trigger: hold **Ctrl + Win** (instant arm — no hold delay)
