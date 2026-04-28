@@ -26,12 +26,12 @@ Grab the latest build from the [**Releases page**](https://github.com/ErfanFathi
 
 **Debian / Ubuntu** — `.deb`:
 ```
-sudo apt install ./BVoice_0.1.1_amd64.deb
+sudo apt install ./BVoice_0.1.2_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE** — `.rpm`:
 ```
-sudo dnf install ./BVoice-0.1.1-1.x86_64.rpm
+sudo dnf install ./BVoice-0.1.2-1.x86_64.rpm
 ```
 
 After install you'll find BVoice in your application menu. On first launch the selected whisper model (~75–466 MB) downloads to `~/.local/share/bvoice/models/`.
