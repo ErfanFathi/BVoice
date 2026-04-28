@@ -17,6 +17,31 @@ use tauri_plugin_autostart::MacosLauncher;
 
 static OVERLAY_PENDING_POS: Mutex<Option<(i32, i32, Instant)>> = Mutex::new(None);
 
+// Restrict the OS-level click region to a circle around the visible UI.
+// WebKit2GTK clamps very small windows to ~200 px so the rest of the
+// window rectangle is transparent but click-blocking; this tells the
+// X server to pass clicks through everywhere outside the circle.
+#[cfg(target_os = "linux")]
+fn apply_overlay_input_shape(window: &gtk::ApplicationWindow, radius: i32) {
+    use cairo::{RectangleInt, Region};
+    use gtk::prelude::*;
+
+    let Some(gdk_win) = window.window() else {
+        return;
+    };
+    let alloc = window.allocation();
+    let cx = alloc.width() / 2;
+    let cy = alloc.height() / 2;
+    let region = Region::create();
+    for dy in -radius..=radius {
+        let dx = ((radius * radius - dy * dy) as f64).sqrt().floor() as i32;
+        if dx > 0 {
+            let _ = region.union_rectangle(&RectangleInt::new(cx - dx, cy + dy, dx * 2, 1));
+        }
+    }
+    gdk_win.input_shape_combine_region(&region, 0, 0);
+}
+
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
     model: String,
@@ -108,7 +133,8 @@ pub fn run() {
                 WebviewUrl::App("index.html".into()),
             )
             .title("BVoice Overlay")
-            .inner_size(96.0, 96.0)
+            .inner_size(80.0, 80.0)
+            .min_inner_size(80.0, 80.0)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
@@ -116,6 +142,15 @@ pub fn run() {
             .resizable(false)
             .visible(true)
             .build()?;
+
+            #[cfg(target_os = "linux")]
+            {
+                use gtk::prelude::*;
+                if let Ok(gtk_win) = overlay.gtk_window() {
+                    gtk_win.connect_size_allocate(|w, _| apply_overlay_input_shape(w, 40));
+                    apply_overlay_input_shape(&gtk_win, 40);
+                }
+            }
 
             if let Some((x, y)) = cfg.overlay_position {
                 let _ = overlay.set_position(PhysicalPosition::new(x, y));
