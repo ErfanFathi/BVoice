@@ -9,9 +9,13 @@ mod vad;
 
 use hotkey::HotkeyEvent;
 use serde::Serialize;
+use std::sync::Mutex;
 use std::thread;
-use tauri::{Emitter, Manager, WindowEvent};
+use std::time::{Duration, Instant};
+use tauri::{Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+
+static OVERLAY_PENDING_POS: Mutex<Option<(i32, i32, Instant)>> = Mutex::new(None);
 
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
@@ -97,6 +101,48 @@ pub fn run() {
         ])
         .setup(move |app| {
             tray::init(app)?;
+
+            let overlay = WebviewWindowBuilder::new(
+                app,
+                "overlay",
+                WebviewUrl::App("index.html".into()),
+            )
+            .title("BVoice Overlay")
+            .inner_size(96.0, 96.0)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .focused(false)
+            .visible(true)
+            .build()?;
+
+            if let Some((x, y)) = cfg.overlay_position {
+                let _ = overlay.set_position(PhysicalPosition::new(x, y));
+            } else if let (Ok(Some(monitor)), Ok(size)) =
+                (overlay.primary_monitor(), overlay.outer_size())
+            {
+                let m_pos = monitor.position();
+                let m_size = monitor.size();
+                let margin: i32 = 32;
+                let x = m_pos.x + m_size.width as i32 - size.width as i32 - margin;
+                let y = m_pos.y + m_size.height as i32 - size.height as i32 - margin;
+                let _ = overlay.set_position(PhysicalPosition::new(x, y));
+            }
+
+            thread::spawn(|| loop {
+                thread::sleep(Duration::from_millis(300));
+                let mut guard = OVERLAY_PENDING_POS.lock().unwrap();
+                if let Some((x, y, t)) = *guard {
+                    if t.elapsed() >= Duration::from_millis(400) {
+                        let mut cfg = config::load();
+                        cfg.overlay_position = Some((x, y));
+                        let _ = config::save(&cfg);
+                        *guard = None;
+                    }
+                }
+            });
 
             let model_name = cfg.model.clone();
             thread::spawn(move || {
@@ -196,11 +242,15 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 let _ = window.hide();
                 api.prevent_close();
             }
+            WindowEvent::Moved(pos) if window.label() == "overlay" => {
+                *OVERLAY_PENDING_POS.lock().unwrap() = Some((pos.x, pos.y, Instant::now()));
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
